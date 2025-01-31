@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -6,6 +7,7 @@
 #include <fstream>
 #include <ostream>
 #include <string>
+#include <unistd.h>
 
 namespace file_sys = std::filesystem;
 
@@ -67,8 +69,7 @@ class BackupTests : public ::testing::Test {
 
 // Тест на корректную обработку неправильного формата
 TEST_F(BackupTests, IncorrectFormatCommand) {
-  std::string output =
-      RunCommand("./bin/my_backup full " + work.string());
+  std::string output = RunCommand("./bin/my_backup full " + work.string());
   std::string expected_out =
       "Вы неправильно используете команду.\n\nФормат ввода:\n./my_backup "
       "[full/incremental] [path from] [path to]\n\nПопробуйте "
@@ -78,9 +79,8 @@ TEST_F(BackupTests, IncorrectFormatCommand) {
 
 // Тест, который проверяет коректные ли пути переданы
 TEST_F(BackupTests, IncorrectDirectories) {
-  std::string output =
-      RunCommand("./bin/my_backup full " + work.string() +
-                 "/unexested_directory " + backup.string());
+  std::string output = RunCommand("./bin/my_backup full " + work.string() +
+                                  "/unexested_directory " + backup.string());
   std::string expected_output =
       "Упс, кажется, программа завершилась с ошибкой!\n\nОдна из переданных "
       "директорий не существует.\nПроверьте правильно ли вы указали путь до "
@@ -88,8 +88,8 @@ TEST_F(BackupTests, IncorrectDirectories) {
       "исправления ошибки!\n";
   EXPECT_EQ(output, expected_output);
 
-  output = RunCommand("./bin/my_backup full " + work.string() +
-                      "/file1.txt " + backup.string());
+  output = RunCommand("./bin/my_backup full " + work.string() + "/file1.txt " +
+                      backup.string());
   expected_output =
       "Упс, кажется, программа завершилась с ошибкой!\n\n"
       "Один из переданных путей ведёт не к директории.\nПроверьте правильно "
@@ -101,14 +101,13 @@ TEST_F(BackupTests, IncorrectDirectories) {
 
 // Тест на фул бэкап
 TEST_F(BackupTests, FullBackup) {
-  RunCommand("./bin/my_backup full " + work.string() + " " +
-             backup.string());
+  RunCommand("./bin/my_backup full " + work.string() + " " + backup.string());
   ASSERT_TRUE(file_sys::exists(backup / "last_full.txt"));
 
   std::ifstream last_full_backup((backup / "last_full.txt").string());
   std::ostringstream last_full;
   last_full << last_full_backup.rdbuf();
-  file_sys::path dir_name = GetTimeName();
+  file_sys::path dir_name = ReadFile(backup / "last_full.txt");
 
   EXPECT_TRUE(file_sys::exists(backup / dir_name / "file1.txt"));
   EXPECT_TRUE(file_sys::exists(backup / dir_name / "subdir1/file2.txt"));
@@ -135,17 +134,21 @@ TEST_F(BackupTests, IncrementalBackupWithoutFull) {
 
 // Тест для проверки инкрементного бэкапа при наличии фулл бэкапа
 TEST_F(BackupTests, IncrementalBackupWithFull) {
-  RunCommand("./bin/my_backup full " + work.string() + " " +
-             backup.string());
+  RunCommand("./bin/my_backup full " + work.string() + " " + backup.string());
   file_sys::path full_dir_name = GetTimeName();
-
+  
   std::ofstream(work / "file1.txt", std::ios::out) << "Changed test file 1";
   std::ofstream(work / "subdir1/file2.txt", std::ios::out)
       << "Changed test file 2";
   std::ofstream(work / "subdir1/subdir2/file3.txt", std::ios::out)
       << "Changed test file 3";
-  sleep(1);
 
+  ASSERT_EQ(ReadFile(work / "file1.txt"), "Changed test file 1");
+  ASSERT_EQ(ReadFile(work / "subdir1/file2.txt"), "Changed test file 2");
+  ASSERT_EQ(ReadFile(work / "subdir1/subdir2/file3.txt"),
+            "Changed test file 3");
+
+  sleep(1);
   RunCommand("./bin/my_backup incremental " + work.string() + " " +
              backup.string());
   file_sys::path dir_name = GetTimeName();
@@ -172,8 +175,8 @@ TEST_F(BackupTests, PermissionDeniedReadInWork) {
   test_file.close();
   file_sys::permissions(work / "test_file.txt", file_sys::perms::none);
 
-  std::string output = RunCommand("./bin/my_backup full " +
-                                  work.string() + " " + backup.string());
+  std::string output = RunCommand("./bin/my_backup full " + work.string() +
+                                  " " + backup.string());
   std::string expected_out =
       "Упс, кажется, программа завершилась с ошибкой!\n\n"
       "Нет права на копирование файла в директорию, в которой вы хотите "
@@ -187,8 +190,8 @@ TEST_F(BackupTests, PermissionDeniedReadInWork) {
 TEST_F(BackupTests, PermissionDeniedWriteInBackup) {
   file_sys::permissions(backup, file_sys::perms::none);
 
-  std::string output = RunCommand("./bin/my_backup full " +
-                                  work.string() + " " + backup.string());
+  std::string output = RunCommand("./bin/my_backup full " + work.string() +
+                                  " " + backup.string());
   std::string expected_out =
       "Упс, кажется, программа завершилась с ошибкой!\n\n"
       "Нет права чтобы создать папку внутри директории для бэкапа\nПоменяйте "
@@ -201,19 +204,16 @@ TEST_F(BackupTests, PermissionDeniedWriteInBackup) {
 
 // Тест на проверку восстановления full backup
 TEST_F(BackupTests, FullRestore) {
-  RunCommand("./bin/my_backup full " + work.string() + " " +
-             backup.string());
-  file_sys::path full_dir_name = GetTimeName();
+  RunCommand("./bin/my_backup full " + work.string() + " " + backup.string());
+  file_sys::path full_dir_name = ReadFile(backup / "last_full.txt");
 
   std::ofstream(work / "file1.txt", std::ios::out) << "Changed test file 1";
 
   std::ofstream(work / "subdir/file2.txt", std::ios::out)
       << "Changed test file 2";
   file_sys::remove(work / "subdir1/subdir2/file3.txt");
-
   RunCommand("./bin/my_restore " + (backup / full_dir_name).string() + " " +
              work.string());
-
   EXPECT_TRUE(file_sys::exists(work / "file1.txt"));
   EXPECT_TRUE(file_sys::exists(work / "subdir1/file2.txt"));
   EXPECT_TRUE(file_sys::exists(work / "subdir1/subdir2/file3.txt"));
@@ -227,7 +227,7 @@ TEST_F(BackupTests, IncrementalRestore) {
   RunCommand("./bin/my_backup incremental " + work.string() + " " +
              backup.string());
   file_sys::path full_dir_name = GetTimeName();
-  
+
   std::ofstream(work / "file1.txt", std::ios::out) << "Changed test file 1";
   file_sys::remove_all(work / "subdir1/subdir2");
   RunCommand("./bin/my_restore " + (backup / full_dir_name).string() + " " +

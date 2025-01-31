@@ -79,8 +79,9 @@ void CompareDirectorties(file_sys::path current_file,
             file_sys::last_write_time(last_backup_file) &&
         file_sys::file_size(current_file) !=
             file_sys::file_size(last_backup_file)) {
+      file_sys::create_directories(path_to);
       file_sys::copy_file(current_file, path_to / current_file.filename(),
-                          file_sys::copy_options::none);
+                          file_sys::copy_options::overwrite_existing);
     }
   } else if (file_sys::is_directory(current_file)) {
     if (!file_sys::exists(last_backup_file)) {
@@ -89,11 +90,10 @@ void CompareDirectorties(file_sys::path current_file,
     }
     if (file_sys::last_write_time(current_file) !=
         file_sys::last_write_time(last_backup_file)) {
-      auto dir_name = current_file.filename();
       for (const auto& component : file_sys::directory_iterator(current_file)) {
         auto comp_name = component.path().filename();
         CompareDirectorties(component.path(), last_backup_file / comp_name,
-                            path_to / dir_name);
+                            path_to / current_file.filename());
       }
     }
   }
@@ -117,9 +117,10 @@ void ProcessIncremental(file_sys::path path_from, file_sys::path path_to) {
 // Создаёт директорию, в которой будет хранится копия
 std::string CreateBackupDir(file_sys::path path_to) {
   std::time_t seconds = std::time(nullptr);
-  std::tm* now_time = std::localtime(&seconds);
+  std::tm now_time;
+  localtime_r(&seconds, &now_time);
   std::ostringstream oss;
-  oss << std::put_time(now_time, "%Y-%m-%d-%H-%M-%S");
+  oss << std::put_time(&now_time, "%Y-%m-%d-%H-%M-%S");
   file_sys::path dir_name = oss.str();
   file_sys::create_directory(path_to / dir_name);
   return dir_name.string();

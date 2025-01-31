@@ -24,31 +24,15 @@ void CopyFiles(file_sys::path current_file, file_sys::path path_to) {
   }
 
   if (file_sys::is_regular_file(current_file)) {
-    if (!file_sys::exists(path_to / current_file.filename())) {
-      file_sys::create_directory(path_to);
-      file_sys::copy_file(current_file, path_to / current_file.filename(),
-                          file_sys::copy_options::none);
-      return;
-    }
-
-    if (file_sys::last_write_time(current_file) !=
-            file_sys::last_write_time(path_to / current_file.filename()) &&
-        file_sys::file_size(current_file) !=
-            file_sys::file_size(path_to / current_file.filename())) {
-      file_sys::copy_file(current_file, path_to / current_file.filename(),
-                          file_sys::copy_options::overwrite_existing);
-    }
+    file_sys::create_directories(path_to);  // Создаём директорию, если её нет
+    file_sys::copy_file(current_file, path_to / current_file.filename(),
+                        file_sys::copy_options::overwrite_existing);
   } else if (file_sys::is_directory(current_file)) {
     if (!file_sys::exists(path_to / current_file.filename())) {
-      file_sys::copy(current_file, path_to / current_file.filename(), file_sys::copy_options::recursive);
-      return;
+      file_sys::create_directories(path_to / current_file.filename());
     }
-    if (file_sys::last_write_time(current_file) !=
-        file_sys::last_write_time(path_to / current_file.filename())) {
-      for (const auto& component : file_sys::directory_iterator(current_file)) {
-        auto comp_name = component.path().filename();
-        CopyFiles(component.path(), path_to / current_file.filename());
-      }
+    for (const auto& component : file_sys::directory_iterator(current_file)) {
+      CopyFiles(component.path(), path_to / current_file.filename());
     }
   }
 }
